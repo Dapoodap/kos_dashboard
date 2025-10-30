@@ -19,32 +19,37 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   // Initialize storage on mount
-  useState(() => {
-    initializeStorage()
-  })
+
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
 
-    try {
-      const user = loginUser(email, password)
-      if (user) {
-        if (user.role === "admin") {
-          router.push("/admin/dashboard")
-        } else {
-          router.push("/penghuni/dashboard")
-        }
-      } else {
-        setError("Email atau password salah")
+   try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          password: password,
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed')
       }
-    } catch (err) {
-      setError("Terjadi kesalahan saat login")
+
+      // Redirect to login
+      router.push('/admin/dashboard')
+      
+    } catch (err: any) {
+      setError(err.message)
     } finally {
-      setIsLoading(false)
-    }
-  }
+      // setLoading(false)
+    }}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 flex items-center justify-center p-4">
