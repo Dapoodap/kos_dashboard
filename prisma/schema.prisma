@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ========== MODELS ==========
+
+model User {
+  id          Int       @id @default(autoincrement())
+  email       String    @unique
+  password    String
+  fullName    String    @map("full_name")
+  phoneNumber String?   @map("phone_number")
+  address     String?
+  role        Role      @default(TENANT)
+  isActive    Boolean   @default(true) @map("is_active")
+  
+  // Admin fields (optional, hanya terisi jika role = ADMIN)
+  buildingId  Int?      @map("building_id")
+  hiredDate   DateTime? @map("hired_date")
+  salary      Decimal?  @db.Decimal(10, 2)
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  building            Building?         @relation(fields: [buildingId], references: [id])
+  tenant              Tenant?
+  bills               Bill[]            @relation("UserBills")
+  createdBills        Bill[]            @relation("CreatedByAdmin")
+  payments            Payment[]         @relation("UserPayments")
+  verifiedPayments    Payment[]         @relation("VerifiedByAdmin")
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  TENANT
+  OWNER
+}
+
+model Building {
+  id         Int      @id @default(autoincrement())
+  name       String   @map("building_name")
+  address    String
+  city       String
+  province   String
+  totalFloors Int     @map("total_floors")
+  facilities String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  rooms Room[]
+  admins User[]
+
+  @@map("buildings")
+}
+
+model RoomType {
+  id                 Int      @id @default(autoincrement())
+  typeName           String   @map("type_name")
+  description        String?
+  basePrice          Decimal  @map("base_price") @db.Decimal(10, 2)
+  includedFacilities String?  @map("included_facilities")
+
+  // Relations
+  rooms Room[]
+
+  @@map("room_types")
+}
+
+model Room {
+  id           Int        @id @default(autoincrement())
+  buildingId   Int        @map("building_id")
+  roomTypeId   Int        @map("room_type_id")
+  roomNumber   String     @unique @map("room_number")
+  floorNumber  Int        @map("floor_number")
+  roomPrice    Decimal    @map("room_price") @db.Decimal(10, 2)
+  status       RoomStatus @default(AVAILABLE)
+  maxOccupants Int        @map("max_occupants")
+  facilities   String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  building         Building           @relation(fields: [buildingId], references: [id])
+  roomType         RoomType           @relation(fields: [roomTypeId], references: [id])
+  tenants          Tenant[]
+  rentalAgreements RentalAgreement[]
+
+  @@map("rooms")
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+model Tenant {
+  id               Int          @id @default(autoincrement())
+  userId           Int          @unique @map("user_id")
+  currentRoomId    Int?         @map("current_room_id")
+  identityNumber   String       @unique @map("identity_number")
+  emergencyContact String       @map("emergency_contact")
+  emergencyPhone   String       @map("emergency_phone")
+  status           TenantStatus @default(ACTIVE)
+  moveInDate       DateTime?    @map("move_in_date")
+  moveOutDate      DateTime?    @map("move_out_date")
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  user             User              @relation(fields: [userId], references: [id])
+  currentRoom      Room?             @relation(fields: [currentRoomId], references: [id])
+  rentalAgreements RentalAgreement[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  BLACKLIST
+}
+
+model RentalAgreement {
+  id                  Int                    @id @default(autoincrement())
+  tenantId            Int                    @map("tenant_id")
+  roomId              Int                    @map("room_id")
+  startDate           DateTime               @map("start_date") @db.Date
+  endDate             DateTime               @map("end_date") @db.Date
+  monthlyRent         Decimal                @map("monthly_rent") @db.Decimal(10, 2)
+  deposit             Decimal                @db.Decimal(10, 2)
+  electricityDeposit  Decimal                @map("electricity_deposit") @db.Decimal(10, 2)
+  waterDeposit        Decimal                @map("water_deposit") @db.Decimal(10, 2)
+  termsAndConditions  String?                @map("terms_and_conditions")
+  status              RentalAgreementStatus  @default(ACTIVE)
+  createdAt           DateTime               @default(now()) @map("created_at")
+  signedAt            DateTime?              @map("signed_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  room   Room   @relation(fields: [roomId], references: [id])
+
+  @@map("rental_agreements")
+}
+
+enum RentalAgreementStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+model Bill {
+  id          Int        @id @default(autoincrement())
+  userId      Int        @map("user_id")
+  createdBy   Int?       @map("created_by")
+  billType    BillType   @map("bill_type")
+  billPeriod  String     @map("bill_period")
+  dueDate     DateTime   @map("due_date") @db.Date
+  amount      Decimal    @db.Decimal(10, 2)
+  status      BillStatus @default(UNPAID)
+  description String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  user           User      @relation("UserBills", fields: [userId], references: [id])
+  createdByAdmin User?     @relation("CreatedByAdmin", fields: [createdBy], references: [id])
+  payments       Payment[]
+
+  @@map("bills")
+}
+
+enum BillType {
+  RENT
+  ELECTRICITY
+  WATER
+  MAINTENANCE
+  OTHER
+}
+
+enum BillStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model Payment {
+  id                   Int           @id @default(autoincrement())
+  billId               Int           @map("bill_id")
+  userId               Int           @map("user_id")
+  verifiedBy           Int?          @map("verified_by")
+  amountPaid           Decimal       @map("amount_paid") @db.Decimal(10, 2)
+  paymentDate          DateTime      @map("payment_date") @db.Date
+  paymentMethod        PaymentMethod @map("payment_method")
+  transactionReference String?       @map("transaction_reference")
+  status               PaymentStatus @default(PENDING)
+  adminNotes           String?       @map("admin_notes")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  verifiedAt           DateTime?     @map("verified_at")
+
+  // Relations
+  bill     Bill           @relation(fields: [billId], references: [id])
+  user     User           @relation("UserPayments", fields: [userId], references: [id])
+  verifier User?          @relation("VerifiedByAdmin", fields: [verifiedBy], references: [id])
+  proofs   PaymentProof[]
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  E_WALLET
+  DEBIT
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model PaymentProof {
+  id         Int      @id @default(autoincrement())
+  paymentId  Int      @map("payment_id")
+  filePath   String   @map("file_path")
+  fileName   String   @map("file_name")
+  fileType   String   @map("file_type")
+  fileSize   Int      @map("file_size")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("payment_proofs")
+}
